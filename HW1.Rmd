@@ -1,0 +1,40 @@
+---
+title: "Homework 1"
+author: "Matthew Kirschenbaum"
+date: "May 6, 2024"
+output: 
+  html_document: 
+    highlight: espresso
+    theme: cerulean
+---
+
+```{r setup}
+    knitr::opts_knit$set(root.dir = normalizePath("/Users/matthewkirschenbaum/Desktop/Bioinformatics in R")) 
+```
+
+Load the libraries:
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, results="hide"}
+library(readr)
+library(clusterProfiler)
+library(ggplot2)
+library(org.Hs.eg.db)
+library(gprofiler2) 
+```
+
+Load and subset the data:
+```{r}
+colors <- read.csv('Gene2Color-1.csv', header = TRUE, row.names = 1)
+turq_genes <- rownames(colors[colors$COLOR == "turquoise", , drop = FALSE])
+```
+
+Run Gene Ontology Enrichment:
+```{r}
+enrich_result <- enrichGO(gene = turq_genes, OrgDb = org.Hs.eg.db, keyType = 'ENSEMBL', ont = "BP")
+barplot(enrich_result, showCategory = 10)
+```
+
+GOSt: functional profiling
+```{r}
+go_upreg <- gost(turq_genes, organism = 'hsapiens', significant = T)
+gostplot(go_upreg, interactive = T)
+```
