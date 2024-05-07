@@ -13,108 +13,73 @@ output:
     knitr::opts_knit$set(root.dir = normalizePath("/Users/matthewkirschenbaum/Desktop/Bioinformatics in R")) 
 ```
 
-## Differential Gene Expression From Counts Table to DeSeq2
-Begin by downloading the data from (Same link as in today's canvas page), download to your working directory.
 
-#Install the required librries and load the data.
-
-You will have to install enhanced volcano, if this gives issues like last time, we can try a different software.
-```{r}
-#BiocManager::install("EnhancedVolcano")
-```
-
-We now load the libraries
+Load the Libraries
 ```{r message=FALSE, warning=FALSE, paged.print=FALSE, results="hide"}
-# We first need to import the important libnrary for today's class, dplyr
 library(dplyr)
 library(readr)
 library(DESeq2)
 library(ggplot2)
 library(EnhancedVolcano)
-
 ```
 
-Here we will run the entire dseq program to find significantly expressed genes
-
+Upload Counts table and Metadata
 ```{r}
 counts <- read.table('/Users/matthewkirschenbaum/Desktop/Bioinformatics in R/counts_table.txt', header = TRUE, sep = '\t')
 metadata <- read.csv('finalproject_metadata.csv', row.names = 1, header = TRUE)
-### Modify the metadata table
-
 ```
 
+Subset the Data and Match Column Names
 ```{r}
 # Set the first column ('Geneid') as row names
 rownames(counts) <- counts[, 1]
 
-# Select columns 7 to 12 and rename them
+# Select relevant columns (7 to 12) and rename them according to our samples
 counts_subset <- counts[, 7:12]
 colnames(counts_subset) <- c("SRR24035598", "SRR24035597", "SRR24035596", "SRR24035595", "SRR24035594", "SRR24035593")
 ```
 
+Run DESeq on subsetted data with respect to metadata and CBD treatment
 ```{r}
-#creat a deseqobject
-
 dds <- DESeqDataSetFromMatrix(countData = counts_subset, 
                               colData = metadata,
                               design = ~ Treatment)
 ```
+
+Subset the DESeq Results
 ```{r}
 ## Subset your ddseq object
 subset <-  dds[(rowSums(counts(dds)) >= 10),]
 
-### fix the base to a preferred treatment
+### fix the base to a  treatment
 relevel(dds$Treatment, ref='Baseline')
 
-### Run deseq2
-
 deseq_ob <- DESeq(subset)
-
-#### Save the results to a new object
 res <- results(deseq_ob, alpha = 0.05)
 ```
 
-### New packages: 
-This package will be able to convert between ENSEMBL ID and symbol (gene names) 
-
+Rename Differentially Expressed Ensembl Genes using org.Hs.eg database
 ```{r}
-#if (!require("BiocManager", quietly = TRUE))
-#    install.packages("BiocManager")
-#BiocManager::install("org.Hs.eg.db")
-```
+library(org.Hs.eg.db)
 
-```{r}
-library("org.Hs.eg.db")
 sigs.df <-  as.data.frame(res)
-sigs.df$symbol <- mapIds(org.Hs.eg.db, keys= rownames(sigs.df), keytype = 'ENSEMBL', colum = "SYMBOL")
+enst <- rownames(sigs.df)
+enst_adjusted <- gsub("\\..*$", "", enst) #remove the decimal and numbers after the decimal in the Ensembl geneID row names for compatibility with org.Hs.eg.db
+sigs.df$symbol <- mapIds(org.Hs.eg.db, keys= enst_adjusted, keytype = 'ENSEMBL', colum = "SYMBOL")
 ```
 
-### Make your first volcano plot!
+Visualize with Standard Volcano Plot
 ```{r}
 EnhancedVolcano(sigs.df, x='log2FoldChange', y = 'padj', lab = sigs.df$symbol)
-
 ```
-Look at the manual (vignette for enhanced volcano) https://bioconductor.org/packages/devel/bioc/vignettes/EnhancedVolcano/inst/doc/EnhancedVolcano.html
-Create a new code chunk and plot a better version of this volcano plot! (15 minutes)
 
+Make Volcano Plot Vertical to emphasize p-value difference
 ```{R}
-library("org.Hs.eg.db")
 
-# Convert rownames of 'res' to italics
-lab_italics <- paste0("italic('", rownames(res), "')")
-
-# Select specific labels to highlight
-selectLab_italics <- paste0(
-  "italic('",
-  c('SPARCL1', 'ARHGEF2', 'PER1', 'PHC2', 'DNM1', 'RAB7B', 'ALOX15B'),
-  "')")
-
-# Create the volcano plot with modifications for a vertical display
 EnhancedVolcano(res,
-  lab = lab_italics,
+  lab = sigs.df$symbol,
   x = 'log2FoldChange',
   y = 'pvalue',
-  selectLab = selectLab_italics,
   xlab = bquote(~Log[2]~ 'fold change'),
   pCutoff = 10e-14,
   FCcutoff = 1.0,
@@ -135,77 +100,51 @@ EnhancedVolcano(res,
 
 ```
 
-## Heatmaps!
+Heatmap of Differentially-Expressed Genes by Sample
 ```{R}
-#install.packages("ComplexHeatmap")
-#BiocManager::install("ComplexHeatmap")
 library(ComplexHeatmap)
-
-```
-
-```{R}
 diff.df <- as.data.frame(sigs.df)
 diff.df <- diff.df %>%
   filter(padj < 0.05)
-```
-
-```{R}
-mat <- counts(deseq_ob, normalized = T)[rownames(diff.df),]
-mat.z <- t(apply(mat,1, scale))
-colnames(mat.z) <- colnames(mat)
-Heatmap(mat.z, cluster_rows= T, cluster_columns= T, name = "Z-score", row_labels = diff.df[rownames(mat.z),]$symbol)
-```
-## Use dplyr to subset the table of significant values until you get a nice looking figure. 
-(You cannot plot all genes at once so you have to subset in order to gain some insights from 
-your data)
-```{R}
-diff.df <- as.data.frame(sigs.df)
-diff.df <- diff.df %>%
-  filter(padj < 0.05, log2FoldChange > 3.5, baseMean > 100)
 
 mat <- counts(deseq_ob, normalized = T)[rownames(diff.df),]
 mat.z <- t(apply(mat,1, scale))
 colnames(mat.z) <- colnames(mat)
 Heatmap(mat.z, cluster_rows= T, cluster_columns= T, name = "Z-score", row_labels = diff.df[rownames(mat.z),]$symbol)
-
 ```
-## Gene Ontology Analysis
+
+Gene Ontology Analysis
 ```{R}
-#BiocManager::install('clusterProfiler')
 library(clusterProfiler)
-```
 
-```{R}
 diff.df <- as.data.frame(sigs.df)
 diff.df <- diff.df %>%
   filter(padj < 0.05)
+diff_df_adjusted <- diff.df
 
-genes_to_test <- rownames(diff.df)
+# Extract rownames
+rownames_diff_df <- rownames(diff.df)
+
+# Remove decimal or number after decimal for use with org.Hs.eg.db
+rownames_adjusted <- gsub("\\..*$", "", rownames_diff_df)
+
+# Assign adjusted rownames to the new dataframe
+rownames(diff_df_adjusted) <- rownames_adjusted
+
+genes_to_test <- rownames(diff_df_adjusted)
 GO_results <- enrichGO(gene = genes_to_test, OrgDb = "org.Hs.eg.db", keyType = 'ENSEMBL', ont = "BP")
 fit <- plot(barplot(GO_results, showCategory=10))
 ```
 
-Anothe program is gost, we can try it below.
+GOSt Plot
 ```{R}
 library(gprofiler2) 
 go_upreg <- gost(genes_to_test, organism = 'hsapiens', significant = T)
 gostplot(go_upreg, interactive = T)
 ```
-It might be more informative to create plots for genes that are both upregulated and downregulated. Subset your data above and plot the GO enrichment for both upregulated and downreghulated.
-```{R}
-upregulated_genes <- subset(res, log2FoldChange > 0 & padj < 0.05)
-downregulated_genes <- subset(res, log2FoldChange < 0 & padj < 0.05)
 
-# Perform GO enrichment for upregulated genes
-upregulated_GO_results <- enrichGO(gene = rownames(upregulated_genes), OrgDb = org.Hs.eg.db, keyType = 'ENSEMBL', ont = "BP")
-barplot(upregulated_GO_results, showCategory = 10, title = "GO Enrichment Analysis for Upregulated Genes")
 
-# Perform GO enrichment for downregulated genes
-downregulated_GO_results <- enrichGO(gene = rownames(downregulated_genes), OrgDb = org.Hs.eg.db, keyType = 'ENSEMBL', ont = "BP")
-barplot(downregulated_GO_results, showCategory = 10, title = "GO Enrichment Analysis for Downregulated Genes")
-```
-
-GSEA Plot, make one, Cesar will explain what it means 
+GSEA Plot: Works in RStudio Markdown, but not when rendering/knitting. Included code for reference.
 ```{R}
 res <- res[order(-res$stat),]
 gene_list <- res$stat
